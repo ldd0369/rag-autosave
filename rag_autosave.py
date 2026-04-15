@@ -26,7 +26,7 @@ def save_last_saved_time(t):
 
 def fetch_new_conversations(last_saved_ts):
     client = MongoClient(MONGO_URI)
-    db = client.get_default_database()
+    db = client.get_database("LibreChat")
     
     last_saved_dt = datetime.fromtimestamp(last_saved_ts, tz=timezone.utc)
     
