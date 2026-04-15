@@ -52,16 +52,15 @@ def save_to_rag(conv_id, lines, created_at):
     JWT_SECRET = os.environ.get("JWT_SECRET")
     token = jwt.encode({"sub": "rag-autosave"}, JWT_SECRET, algorithm="HS256")
     headers = {
-            "Authorization": f"Bearer {token}",
-            "Content-Type": "application/json"
+        "Authorization": f"Bearer {token}"
     }
-    payload = {
-        "file_id": f"conv_{conv_id}",
-        "file_text": content
+    files = {
+        "file_id": (None, f"conv_{conv_id}"),
+        "file": (f"conv_{conv_id}.txt", content.encode("utf-8"), "text/plain")
     }
     response = requests.post(
         f"{RAG_API_URL}/embed",
-        json=payload,
+        files=files,
         headers=headers,
         timeout=30
     )
