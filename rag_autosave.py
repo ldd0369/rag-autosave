@@ -50,7 +50,7 @@ def group_by_conversation(messages):
 def save_to_rag(conv_id, lines, created_at):
     content = f"대화ID: {conv_id}\n날짜: {created_at}\n\n" + "\n".join(lines)
     JWT_SECRET = os.environ.get("JWT_SECRET")
-    token = jwt.encode({"sub": "rag-autosave"}, JWT_SECRET, algorithm="HS256")
+    token = jwt.encode({"id": "rag-autosave"}, JWT_SECRET, algorithm="HS256")
     headers = {
         "Authorization": f"Bearer {token}"
     }
