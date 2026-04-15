@@ -29,6 +29,8 @@ def fetch_new_conversations(last_saved_ts):
     print(f"전체 DB 목록: {client.list_database_names()}")
     db = client.get_database("test")
     print(f"컬렉션 목록: {db.list_collection_names()}")
+    users = list(db.users.find({}, {"_id": 1, "email": 1}))
+    print(f"사용자 목록: {users}")
     last_saved_dt = datetime.fromtimestamp(last_saved_ts, tz=timezone.utc)
     messages = list(db.messages.find(
         {"createdAt": {"$gt": last_saved_dt}},
