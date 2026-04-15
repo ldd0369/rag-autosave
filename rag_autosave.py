@@ -3,6 +3,7 @@ import time
 import requests
 from datetime import datetime, timezone
 from pymongo import MongoClient
+import jwt
 
 MONGO_URI = os.environ.get("MONGO_URI")
 RAG_API_URL = os.environ.get("RAG_API_URL", "https://rag-api-production-cc9c.up.railway.app")
@@ -48,8 +49,11 @@ def group_by_conversation(messages):
 
 def save_to_rag(conv_id, lines, created_at):
     content = f"대화ID: {conv_id}\n날짜: {created_at}\n\n" + "\n".join(lines)
+    JWT_SECRET = os.environ.get("JWT_SECRET")
+    token = jwt.encode({"sub": "rag-autosave"}, JWT_SECRET, algorithm="HS256")
     headers = {
-        "Content-Type": "application/json"
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json"
     }
     payload = {
         "documents": [
