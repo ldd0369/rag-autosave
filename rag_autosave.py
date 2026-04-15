@@ -60,7 +60,7 @@ def save_to_rag(conv_id, lines, created_at):
     }
     files = {
         "file_id": (None, f"conv_{conv_id}"),
-        "file": (f"conv_{conv_id}.txt", content.encode("utf-8"), "text/plain")
+        "file": (f"conv_{conv_id}.txt", content.encode("utf-8"), "text/plain"),
         "entity_id": (None, "69c9121e937a13bdcaf4e292")
     }
     response = requests.post(
