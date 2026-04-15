@@ -31,7 +31,9 @@ def fetch_new_conversations(last_saved_ts):
     last_saved_dt = datetime.fromtimestamp(last_saved_ts, tz=timezone.utc)
     
     # LibreChat messages 컬렉션에서 최신 메시지 조회
-    messages = list(db.messages.find(
+    print(f"컬렉션 목록: {db.list_collection_names()}")
+print(f"messages 총 개수: {db.messages.count_documents({})}")
+messages = list(db.messages.find(
         {"createdAt": {"$gt": last_saved_dt}},
         {"_id": 0, "conversationId": 1, "text": 1, "sender": 1, "createdAt": 1}
     ).sort("createdAt", 1))
