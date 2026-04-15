@@ -12,6 +12,8 @@ LIBRECHAT_TOKEN = os.environ.get("LIBRECHAT_TOKEN")
 LAST_SAVED_FILE = "/app/last_saved.txt"
 
 def get_last_saved_time():
+    if os.environ.get("FORCE_RESET") == "true":
+        return time.time() - 86400  # 24시간 전부터
     try:
         with open(LAST_SAVED_FILE, "r") as f:
             return float(f.read().strip())
