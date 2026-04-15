@@ -56,18 +56,11 @@ def save_to_rag(conv_id, lines, created_at):
             "Content-Type": "application/json"
     }
     payload = {
-        "documents": [
-            {
-                "page_content": content,
-                "metadata": {
-                    "source": f"librechat_conv_{conv_id}",
-                    "type": "conversation"
-                }
-            }
-        ]
+        "file_id": f"conv_{conv_id}",
+        "file_text": content
     }
     response = requests.post(
-        f"{RAG_API_URL}/documents",
+        f"{RAG_API_URL}/embed",
         json=payload,
         headers=headers,
         timeout=30
