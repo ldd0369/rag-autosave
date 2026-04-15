@@ -24,7 +24,7 @@ def save_last_saved_time(t):
 def fetch_new_conversations(last_saved_ts):
     client = MongoClient(MONGO_URI)
     print(f"전체 DB 목록: {client.list_database_names()}")
-    db = client.get_database("LibreChat")
+    db = client.get_database("test")
     print(f"컬렉션 목록: {db.list_collection_names()}")
     last_saved_dt = datetime.fromtimestamp(last_saved_ts, tz=timezone.utc)
     messages = list(db.messages.find(
