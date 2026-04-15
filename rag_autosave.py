@@ -49,7 +49,6 @@ def group_by_conversation(messages):
 def save_to_rag(conv_id, lines, created_at):
     content = f"대화ID: {conv_id}\n날짜: {created_at}\n\n" + "\n".join(lines)
     headers = {
-        "Authorization": f"Bearer {LIBRECHAT_TOKEN}",
         "Content-Type": "application/json"
     }
     payload = {
