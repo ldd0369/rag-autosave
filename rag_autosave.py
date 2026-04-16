@@ -92,17 +92,26 @@ def main():
         time.sleep(0.5)
     save_last_saved_time(now_ts)
     print(f"[{datetime.now()}] 완료")
-    # entity_id 없이 쿼리 테스트
+    # 전체 ID 순회 쿼리 테스트
     JWT_SECRET = os.environ.get("JWT_SECRET")
     token = jwt.encode({"id": "rag-autosave"}, JWT_SECRET, algorithm="HS256")
-    test_response = requests.post(
-        f"{RAG_API_URL}/query",
-        json={"query": "생일", "file_id": "conv_328a193a-5fe0-413c-a941-365d01b51c37", "k": 3},
-        headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+    ids_resp = requests.get(
+        f"{RAG_API_URL}/ids",
+        params={"entity_id": "69c9121e937a13bdcaf4e292"},
+        headers={"Authorization": f"Bearer {token}"},
         timeout=30
     )
-    print(f"쿼리 결과(entity_id 없음): {test_response.status_code}")
-    print(f"내용: {test_response.text[:500]}")
+    import json as json_lib
+    ids_list = json_lib.loads(ids_resp.text)
+    print(f"전체 ID 수: {len(ids_list)}")
+    for fid in ids_list[:5]:
+        r = requests.post(
+            f"{RAG_API_URL}/query",
+            json={"query": "생일", "file_id": fid, "k": 3},
+            headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+            timeout=30
+        )
+        print(f"{fid[:20]} → {r.status_code} → {r.text[:100]}")
     
 if __name__ == "__main__":
     main()
