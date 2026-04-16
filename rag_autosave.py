@@ -1,4 +1,4 @@
-# v2
+# v3
 import os
 import time
 import uuid
@@ -23,18 +23,6 @@ def generate_token():
         "exp": int(time.time()) + 86400
     }
     return jwt.encode(payload, JWT_SECRET, algorithm="HS256")
-
-def upload_to_rag(content, filename):
-    token = generate_token()
-    headers = {"Authorization": f"Bearer {token}"}
-    files = {"file": (filename, content.encode("utf-8"), "text/plain")}
-    response = requests.post(
-        f"{RAG_API_URL}/documents",
-        headers=headers,
-        files=files,
-        timeout=30
-    )
-    return response
 
 def register_to_agent(filename, content):
     token = generate_token()
@@ -72,7 +60,6 @@ def main():
     now = datetime.now(timezone.utc)
 
     if FORCE_RESET:
-        # 전체 기록 처리: 2020년부터
         since = datetime(2020, 1, 1, tzinfo=timezone.utc)
     else:
         state = db.rag_autosave_state.find_one({"_id": "last_run"})
@@ -86,20 +73,36 @@ def main():
     print(f"[{now}] RAG 자동저장 시작")
     print(f"마지막 저장 시각: {since}")
 
+    # user 필드 ObjectId + string 둘 다 시도
     user_obj_id = ObjectId(USER_ID)
     recent_messages = list(db.messages.find({
-        "user": user_obj_id,
+        "$or": [
+            {"user": user_obj_id},
+            {"user": USER_ID}
+        ],
         "createdAt": {"$gt": since}
     }))
 
     print(f"새 메시지 {len(recent_messages)}개 발견")
+
+    # 그래도 0개면 전체 메시지 샘플 확인
+    if len(recent_messages) == 0:
+        sample = db.messages.find_one({})
+        if sample:
+            print(f"[진단] 샘플 메시지 user 필드 타입: {type(sample.get('user'))} / 값: {sample.get('user')}")
+            print(f"[진단] 샘플 메시지 createdAt: {sample.get('createdAt')}")
+        else:
+            print("[진단] messages 컬렉션이 비어있음")
+        client.close()
+        return
 
     conv_ids = list(set([m["conversationId"] for m in recent_messages if "conversationId" in m]))
     print(f"대화 {len(conv_ids)}개 처리 중")
 
     for conv_id in conv_ids:
         messages = list(db.messages.find(
-            {"conversationId": conv_id, "user": user_obj_id},
+            {"$or": [{"user": user_obj_id}, {"user": USER_ID}],
+             "conversationId": conv_id},
             sort=[("createdAt", 1)]
         ))
         if not messages:
@@ -111,15 +114,14 @@ def main():
 
         filename = f"conv_{conv_id[:8]}.txt"
 
-        # 에이전트 파일 등록 (LibreChat API)
         try:
             agent_response = register_to_agent(filename, content)
             if agent_response.status_code == 200:
-                print(f"대화 {conv_id[:8]}... → 에이전트 등록 완료: {agent_response.status_code}")
+                print(f"대화 {conv_id[:8]}... → 에이전트 등록 완료")
             else:
-                print(f"대화 {conv_id[:8]}... → 에이전트 등록 실패: {agent_response.status_code} / {agent_response.text[:200]}")
+                print(f"대화 {conv_id[:8]}... → 등록 실패: {agent_response.status_code} / {agent_response.text[:200]}")
         except Exception as e:
-            print(f"대화 {conv_id[:8]}... → 에이전트 등록 에러: {e}")
+            print(f"대화 {conv_id[:8]}... → 에러: {e}")
 
     db.rag_autosave_state.update_one(
         {"_id": "last_run"},
