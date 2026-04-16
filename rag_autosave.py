@@ -92,17 +92,17 @@ def main():
         time.sleep(0.5)
     save_last_saved_time(now_ts)
     print(f"[{datetime.now()}] 완료")
-    # RAG 검색 테스트
+    # 저장된 문서 ID 목록 확인
     JWT_SECRET = os.environ.get("JWT_SECRET")
     token = jwt.encode({"id": "rag-autosave"}, JWT_SECRET, algorithm="HS256")
-    test_response = requests.post(
-        f"{RAG_API_URL}/query",
-        json={"query": "생일", "file_id": "", "k": 3, "entity_id": "69c9121e937a13bdcaf4e292"},
-        headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+    ids_response = requests.get(
+        f"{RAG_API_URL}/ids",
+        params={"entity_id": "69c9121e937a13bdcaf4e292"},
+        headers={"Authorization": f"Bearer {token}"},
         timeout=30
     )
-    print(f"쿼리 테스트 결과: {test_response.status_code}")
-    print(f"내용: {test_response.text[:500]}")
+    print(f"저장된 문서 목록: {ids_response.status_code}")
+    print(f"내용: {ids_response.text[:500]}")
     
 if __name__ == "__main__":
     main()
