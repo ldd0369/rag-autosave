@@ -1,4 +1,4 @@
-# v4
+# v5
 import os
 import time
 import jwt
@@ -56,24 +56,39 @@ def main():
     db = client.get_database("test")
 
     now_aware = datetime.now(timezone.utc)
-    now_naive = datetime.utcnow()  # MongoDB naive datetime과 비교용
 
     if FORCE_RESET:
-        since = datetime(2020, 1, 1)  # naive
+        since = datetime(2020, 1, 1)
     else:
         state = db.rag_autosave_state.find_one({"_id": "last_run"})
         if state:
             since = state["last_run"]
-            # aware면 naive로 변환
             if hasattr(since, 'tzinfo') and since.tzinfo is not None:
                 since = since.replace(tzinfo=None)
         else:
-            since = now_naive - timedelta(hours=24)
+            since = datetime(2020, 1, 1)
 
     print(f"[{now_aware}] RAG 자동저장 시작")
     print(f"마지막 저장 시각: {since}")
 
-    # user: string, createdAt: naive datetime으로 쿼리
+    # 진단: 전체 메시지 수
+    total_count = db.messages.count_documents({})
+    print(f"[진단] 전체 메시지 수: {total_count}")
+
+    # 진단: user 필드로만 검색
+    user_count = db.messages.count_documents({"user": USER_ID})
+    print(f"[진단] user={USER_ID} 메시지 수: {user_count}")
+
+    # 진단: since 이후 메시지 (user 조건 없이)
+    since_count = db.messages.count_documents({"createdAt": {"$gt": since}})
+    print(f"[진단] since 이후 전체 메시지 수: {since_count}")
+
+    # 진단: 샘플 5개 user 값 확인
+    samples = list(db.messages.find({}, {"user": 1, "createdAt": 1}).limit(5))
+    for s in samples:
+        print(f"[진단] user={repr(s.get('user'))} / createdAt={s.get('createdAt')}")
+
+    # 본 쿼리
     recent_messages = list(db.messages.find({
         "user": USER_ID,
         "createdAt": {"$gt": since}
@@ -107,10 +122,9 @@ def main():
         except Exception as e:
             print(f"대화 {conv_id[:8]}... → 에러: {e}")
 
-    # 저장 시각은 naive로 저장
     db.rag_autosave_state.update_one(
         {"_id": "last_run"},
-        {"$set": {"last_run": now_naive}},
+        {"$set": {"last_run": datetime.utcnow()}},
         upsert=True
     )
 
