@@ -97,7 +97,7 @@ def main():
     token = jwt.encode({"id": "rag-autosave"}, JWT_SECRET, algorithm="HS256")
     test_response = requests.post(
         f"{RAG_API_URL}/query",
-        json={"query": "생일", "k": 3},
+        json={"query": "생일", "file_id": "conv_328a193a", "k": 3},
         headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
         timeout=30
     )
