@@ -1,19 +1,21 @@
 import os
 import time
+import uuid
+import jwt
 import requests
 from datetime import datetime, timezone
 from pymongo import MongoClient
-import jwt
 
 MONGO_URI = os.environ.get("MONGO_URI")
-RAG_API_URL = os.environ.get("RAG_API_URL", "https://rag-api-production-cc9c.up.railway.app")
-LIBRECHAT_TOKEN = os.environ.get("LIBRECHAT_TOKEN")
+RAG_API_URL = os.environ.get("RAG_API_URL", "http://rag-api.railway.internal:8000")
+JWT_SECRET = os.environ.get("JWT_SECRET")
+USER_ID = "69c9121e937a13bdcaf4e292"
 
 LAST_SAVED_FILE = "/app/last_saved.txt"
 
 def get_last_saved_time():
     if os.environ.get("FORCE_RESET") == "true":
-        return time.time() - 86400  # 24시간 전부터
+        return time.time() - 86400
     try:
         with open(LAST_SAVED_FILE, "r") as f:
             return float(f.read().strip())
@@ -26,11 +28,7 @@ def save_last_saved_time(t):
 
 def fetch_new_conversations(last_saved_ts):
     client = MongoClient(MONGO_URI)
-    print(f"전체 DB 목록: {client.list_database_names()}")
     db = client.get_database("test")
-    print(f"컬렉션 목록: {db.list_collection_names()}")
-    users = list(db.users.find({}, {"_id": 1, "email": 1}))
-    print(f"사용자 목록: {users}")
     last_saved_dt = datetime.fromtimestamp(last_saved_ts, tz=timezone.utc)
     messages = list(db.messages.find(
         {"createdAt": {"$gt": last_saved_dt}},
@@ -53,15 +51,16 @@ def group_by_conversation(messages):
 
 def save_to_rag(conv_id, lines, created_at):
     content = f"대화ID: {conv_id}\n날짜: {created_at}\n\n" + "\n".join(lines)
-    JWT_SECRET = os.environ.get("JWT_SECRET")
+    file_id = str(uuid.uuid4())
+    filename = f"conv_{conv_id[:8]}.txt"
     token = jwt.encode({"id": "rag-autosave"}, JWT_SECRET, algorithm="HS256")
     headers = {
         "Authorization": f"Bearer {token}"
     }
     files = {
-        "file_id": (None, f"conv_{conv_id}"),
-        "file": (f"conv_{conv_id}.txt", content.encode("utf-8"), "text/plain"),
-        "entity_id": (None, "69c9121e937a13bdcaf4e292")
+        "file_id": (None, file_id),
+        "file": (filename, content.encode("utf-8"), "text/plain"),
+        "entity_id": (None, USER_ID)
     }
     response = requests.post(
         f"{RAG_API_URL}/embed",
@@ -69,7 +68,7 @@ def save_to_rag(conv_id, lines, created_at):
         headers=headers,
         timeout=30
     )
-    return response.status_code
+    return response.status_code, file_id
 
 def main():
     print(f"[{datetime.now()}] RAG 자동저장 시작")
@@ -87,17 +86,11 @@ def main():
     for conv_id, lines in conversations.items():
         if not lines:
             continue
-        status = save_to_rag(conv_id, lines, datetime.now().strftime("%Y-%m-%d %H:%M"))
-        print(f"대화 {conv_id[:8]}... → RAG 저장 상태: {status}")
+        status, file_id = save_to_rag(conv_id, lines, datetime.now().strftime("%Y-%m-%d %H:%M"))
+        print(f"대화 {conv_id[:8]}... → RAG 저장 상태: {status} / file_id: {file_id}")
         time.sleep(0.5)
     save_last_saved_time(now_ts)
     print(f"[{datetime.now()}] 완료")
-    # LibreChat 내부 file_id 형식 확인
-    client_mongo = MongoClient(MONGO_URI)
-    db_mongo = client_mongo.get_database("test")
-    files = list(db_mongo.files.find({}, {"_id": 0, "file_id": 1, "filename": 1, "filepath": 1}))
-    print(f"파일 목록: {files}")
-    client_mongo.close()
-    
+
 if __name__ == "__main__":
     main()
