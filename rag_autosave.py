@@ -81,10 +81,10 @@ def register_file_to_agent(file_id, filename, content):
         "type": "text/plain",
         "size": len(content.encode("utf-8")),
         "user": USER_ID,
-        "createdAt": now,
-        "updatedAt": now
         "source": "vectordb",
         "embedded": True,
+        "createdAt": now,
+        "updatedAt": now
     })
     db.agents.update_one(
         {"_id": ObjectId(AGENT_ID)},
@@ -118,14 +118,7 @@ def main():
             print(f"에이전트 등록 완료: {file_id}")
         time.sleep(0.5)
     save_last_saved_time(now_ts)
-    print(f"[완료] 저장 정상 종료")
-    # 수동 업로드 파일 구조 확인
-    client_check = MongoClient(MONGO_URI)
-    db_check = client_check.get_database("test")
-    sample = db_check.files.find_one({"filename": {"$regex": "9eabfa"}})
-    print(f"수동업로드 구조: {sample}")
-    client_check.close()
-    # 에이전트 file_id로 직접 쿼리 테스트
-    
+    print(f"[{datetime.now()}] 완료")
+
 if __name__ == "__main__":
     main()
