@@ -91,6 +91,12 @@ def main():
         time.sleep(0.5)
     save_last_saved_time(now_ts)
     print(f"[{datetime.now()}] 완료")
+    # 에이전트 컬렉션 확인
+    client_mongo = MongoClient(MONGO_URI)
+    db_mongo = client_mongo.get_database("test")
+    agents = list(db_mongo.agents.find({}, {"_id": 1, "name": 1, "file_ids": 1}))
+    print(f"에이전트 목록: {agents}")
+    client_mongo.close()
 
 if __name__ == "__main__":
     main()
