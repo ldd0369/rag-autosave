@@ -1,4 +1,4 @@
-# v6
+# v7 - 진단용
 import os
 import time
 import jwt
@@ -72,29 +72,30 @@ def main():
     print(f"[{now_aware}] RAG 자동저장 시작")
     print(f"마지막 저장 시각: {since}")
 
-    # user 조건 없이 conversations 컬렉션에서 해당 유저 대화 ID 먼저 수집
-    user_conversations = list(db.conversations.find(
-        {"$or": [
-            {"user": USER_ID},
-            {"user": ObjectId(USER_ID)}
-        ]},
-        {"conversationId": 1}
-    ))
-    
-    print(f"[진단] 유저 대화 수: {len(user_conversations)}")
-    
-    # 대화 ID 목록
-    conv_id_list = [c["conversationId"] for c in user_conversations if "conversationId" in c]
-    
-    if not conv_id_list:
-        # conversations 컬렉션 샘플 확인
-        sample = db.conversations.find_one({})
-        if sample:
-            print(f"[진단] conversations 샘플 user 타입: {type(sample.get('user'))} / {repr(sample.get('user'))}")
-        client.close()
-        return
+    # 진단: conversations 전체 수
+    total_convs = db.conversations.count_documents({})
+    print(f"[진단] conversations 전체 수: {total_convs}")
 
-    # 해당 대화들의 최근 메시지 수집
+    # 진단: conversations 샘플 전체 필드 출력
+    sample_conv = db.conversations.find_one({})
+    if sample_conv:
+        print(f"[진단] conversations 샘플 키 목록: {list(sample_conv.keys())}")
+        for k, v in sample_conv.items():
+            if k != "_id":
+                print(f"[진단] {k}: {type(v).__name__} = {repr(v)[:80]}")
+
+    # 진단: user 필드로 직접 count
+    count_str = db.conversations.count_documents({"user": USER_ID})
+    count_oid = db.conversations.count_documents({"user": ObjectId(USER_ID)})
+    print(f"[진단] user(string) 매칭: {count_str}개")
+    print(f"[진단] user(ObjectId) 매칭: {count_oid}개")
+
+    # 전체 대화 ID로 진행 (user 필터 없이)
+    all_conversations = list(db.conversations.find({}, {"conversationId": 1}))
+    conv_id_list = [c.get("conversationId") for c in all_conversations if c.get("conversationId")]
+    print(f"[진단] 전체 대화 ID 수: {len(conv_id_list)}")
+
+    # since 이후 메시지
     recent_messages = list(db.messages.find({
         "conversationId": {"$in": conv_id_list},
         "createdAt": {"$gt": since}
