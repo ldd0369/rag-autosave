@@ -1,15 +1,12 @@
-# v3
+# v4
 import os
 import time
-import uuid
 import jwt
 import requests
 from datetime import datetime, timezone, timedelta
 from pymongo import MongoClient
-from bson import ObjectId
 
 MONGO_URI = os.environ.get("MONGO_URI")
-RAG_API_URL = os.environ.get("RAG_API_URL", "http://rag-api.railway.internal:8000")
 JWT_SECRET = os.environ.get("JWT_SECRET", "librechat2026")
 FORCE_RESET = os.environ.get("FORCE_RESET", "false").lower() == "true"
 
@@ -57,52 +54,39 @@ def get_conversation_text(messages):
 def main():
     client = MongoClient(MONGO_URI)
     db = client.get_database("test")
-    now = datetime.now(timezone.utc)
+
+    now_aware = datetime.now(timezone.utc)
+    now_naive = datetime.utcnow()  # MongoDB naive datetime과 비교용
 
     if FORCE_RESET:
-        since = datetime(2020, 1, 1, tzinfo=timezone.utc)
+        since = datetime(2020, 1, 1)  # naive
     else:
         state = db.rag_autosave_state.find_one({"_id": "last_run"})
         if state:
             since = state["last_run"]
-            if since.tzinfo is None:
-                since = since.replace(tzinfo=timezone.utc)
+            # aware면 naive로 변환
+            if hasattr(since, 'tzinfo') and since.tzinfo is not None:
+                since = since.replace(tzinfo=None)
         else:
-            since = now - timedelta(hours=24)
+            since = now_naive - timedelta(hours=24)
 
-    print(f"[{now}] RAG 자동저장 시작")
+    print(f"[{now_aware}] RAG 자동저장 시작")
     print(f"마지막 저장 시각: {since}")
 
-    # user 필드 ObjectId + string 둘 다 시도
-    user_obj_id = ObjectId(USER_ID)
+    # user: string, createdAt: naive datetime으로 쿼리
     recent_messages = list(db.messages.find({
-        "$or": [
-            {"user": user_obj_id},
-            {"user": USER_ID}
-        ],
+        "user": USER_ID,
         "createdAt": {"$gt": since}
     }))
 
     print(f"새 메시지 {len(recent_messages)}개 발견")
-
-    # 그래도 0개면 전체 메시지 샘플 확인
-    if len(recent_messages) == 0:
-        sample = db.messages.find_one({})
-        if sample:
-            print(f"[진단] 샘플 메시지 user 필드 타입: {type(sample.get('user'))} / 값: {sample.get('user')}")
-            print(f"[진단] 샘플 메시지 createdAt: {sample.get('createdAt')}")
-        else:
-            print("[진단] messages 컬렉션이 비어있음")
-        client.close()
-        return
 
     conv_ids = list(set([m["conversationId"] for m in recent_messages if "conversationId" in m]))
     print(f"대화 {len(conv_ids)}개 처리 중")
 
     for conv_id in conv_ids:
         messages = list(db.messages.find(
-            {"$or": [{"user": user_obj_id}, {"user": USER_ID}],
-             "conversationId": conv_id},
+            {"user": USER_ID, "conversationId": conv_id},
             sort=[("createdAt", 1)]
         ))
         if not messages:
@@ -123,9 +107,10 @@ def main():
         except Exception as e:
             print(f"대화 {conv_id[:8]}... → 에러: {e}")
 
+    # 저장 시각은 naive로 저장
     db.rag_autosave_state.update_one(
         {"_id": "last_run"},
-        {"$set": {"last_run": now}},
+        {"$set": {"last_run": now_naive}},
         upsert=True
     )
 
