@@ -1,39 +1,20 @@
-# v9
+# v10
 import os
 import time
-import jwt
 import requests
 from datetime import datetime, timezone, timedelta
 from pymongo import MongoClient
-from bson import ObjectId
 
 MONGO_URI = os.environ.get("MONGO_URI")
-JWT_SECRET = os.environ.get("JWT_SECRET", "librechat2026")
-LIBRECHAT_TOKEN = os.environ.get("LIBRECHAT_TOKEN", "")
 FORCE_RESET = os.environ.get("FORCE_RESET", "false").lower() == "true"
+INTERNAL_API_KEY = os.environ.get("INTERNAL_API_KEY", "juhee2026internal")
 
 LIBRECHAT_URL = "https://librechat-production-8435.up.railway.app"
 USER_ID = "69c9121e937a13bdcaf4e292"
 AGENT_ID = "69ca1ffda677f261425029b4"
 
-def generate_token():
-    payload = {
-        "id": USER_ID,
-        "username": "admin",
-        "provider": "local",
-        "email": "",
-        "name": "",
-        "avatar": None,
-        "role": "ADMIN",
-        "iat": int(time.time()),
-        "exp": int(time.time()) + 86400
-    }
-    return jwt.encode(payload, JWT_SECRET, algorithm="HS256")
-
 def get_auth_headers():
-    if LIBRECHAT_TOKEN:
-        return {"Authorization": f"Bearer {LIBRECHAT_TOKEN}"}
-    return {"Authorization": f"Bearer {generate_token()}"}
+    return {"x-internal-key": INTERNAL_API_KEY}
 
 def register_to_agent(filename, content):
     headers = get_auth_headers()
@@ -54,7 +35,6 @@ def register_to_agent(filename, content):
     return response
 
 def extract_text(content):
-    """content 필드 형식에 관계없이 텍스트 추출"""
     if not content:
         return ""
     if isinstance(content, str):
@@ -65,7 +45,6 @@ def extract_text(content):
             if isinstance(item, str):
                 parts.append(item)
             elif isinstance(item, dict):
-                # text, value, content 등 다양한 키 시도
                 for key in ["text", "value", "content"]:
                     if key in item and item[key]:
                         parts.append(str(item[key]))
@@ -81,7 +60,8 @@ def get_conversation_text(messages):
     lines = []
     for msg in messages:
         role = msg.get("role", "unknown")
-        content = extract_text(msg.get("content", ""))
+        # content 또는 text 필드 시도
+        content = extract_text(msg.get("text") or msg.get("content", ""))
         if content.strip():
             lines.append(f"[{role}]: {content}")
     return "\n".join(lines)
@@ -105,15 +85,6 @@ def main():
 
     print(f"[{now_aware}] RAG 자동저장 시작")
     print(f"마지막 저장 시각: {since}")
-
-    # 진단: 샘플 메시지 content 구조 확인
-    sample_msg = db.messages.find_one({"conversationId": {"$exists": True}})
-    if sample_msg:
-        raw_content = sample_msg.get("content", "")
-        print(f"[진단] content 타입: {type(raw_content).__name__}")
-        print(f"[진단] content 값: {repr(raw_content)[:200]}")
-        extracted = extract_text(raw_content)
-        print(f"[진단] 추출 결과: {repr(extracted)[:200]}")
 
     all_conversations = list(db.conversations.find({}, {"conversationId": 1}))
     conv_id_list = [c.get("conversationId") for c in all_conversations if c.get("conversationId")]
@@ -154,16 +125,16 @@ def main():
                 print(f"대화 {conv_id[:8]}... → 에이전트 등록 완료")
                 success += 1
             else:
-                print(f"대화 {conv_id[:8]}... → 등록 실패: {agent_response.status_code}")
-                if agent_response.status_code == 401:
-                    print(f"[중단] 401 응답: {agent_response.text[:300]}")
-                    break
+                print(f"대화 {conv_id[:8]}... → 실패: {agent_response.status_code} / {agent_response.text[:200]}")
                 fail += 1
+                if agent_response.status_code in [401, 403]:
+                    print(f"[중단] 인증 실패")
+                    break
         except Exception as e:
             print(f"대화 {conv_id[:8]}... → 에러: {e}")
             fail += 1
 
-    print(f"[완료] 성공: {success} / 실패: {fail} / 빈대화 skip: {skip}")
+    print(f"[완료] 성공: {success} / 실패: {fail} / skip: {skip}")
 
     db.rag_autosave_state.update_one(
         {"_id": "last_run"},
