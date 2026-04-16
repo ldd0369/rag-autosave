@@ -1,16 +1,12 @@
 import os
 import time
-import uuid
-import jwt
 import requests
 from datetime import datetime, timezone
 from pymongo import MongoClient
-from bson import ObjectId
 
 MONGO_URI = os.environ.get("MONGO_URI")
-RAG_API_URL = os.environ.get("RAG_API_URL", "http://rag-api.railway.internal:8000")
-JWT_SECRET = os.environ.get("JWT_SECRET")
-USER_ID = "69c9121e937a13bdcaf4e292"
+LIBRECHAT_TOKEN = os.environ.get("LIBRECHAT_TOKEN")
+LIBRECHAT_URL = "https://librechat-production-8435.up.railway.app"
 AGENT_ID = "69ca1ffda677f261425029b4"
 
 LAST_SAVED_FILE = "/app/last_saved.txt"
@@ -51,47 +47,21 @@ def group_by_conversation(messages):
             conversations[conv_id].append(f"[{sender}]: {text}")
     return conversations
 
-def save_to_rag(conv_id, lines, created_at):
+def upload_to_librechat(conv_id, lines, created_at):
     content = f"대화ID: {conv_id}\n날짜: {created_at}\n\n" + "\n".join(lines)
-    file_id = str(uuid.uuid4())
     filename = f"conv_{conv_id[:8]}.txt"
-    token = jwt.encode({"id": "rag-autosave"}, JWT_SECRET, algorithm="HS256")
-    headers = {"Authorization": f"Bearer {token}"}
-    files = {
-        "file_id": (None, file_id),
-        "file": (filename, content.encode("utf-8"), "text/plain"),
-        "entity_id": (None, USER_ID)
-    }
     response = requests.post(
-        f"{RAG_API_URL}/embed",
-        files=files,
-        headers=headers,
-        timeout=30
+        f"{LIBRECHAT_URL}/api/files",
+        headers={"Authorization": f"Bearer {LIBRECHAT_TOKEN}"},
+        files={"file": (filename, content.encode("utf-8"), "text/plain")},
+        data={
+            "endpoint": "agents",
+            "agent_id": AGENT_ID,
+            "tool_resource": "file_search"
+        },
+        timeout=60
     )
-    return response.status_code, file_id
-
-def register_file_to_agent(file_id, filename, content):
-    client = MongoClient(MONGO_URI)
-    db = client.get_database("test")
-    now = datetime.now(tz=timezone.utc)
-    db.files.insert_one({
-        "file_id": file_id,
-        "filename": filename,
-        "filepath": f"/app/uploads/temp/{USER_ID}/{filename}",
-        "type": "text/plain",
-        "bytes": len(content.encode("utf-8")),
-        "object": "file",
-        "user": ObjectId(USER_ID),
-        "source": "vectordb",
-        "embedded": True,
-        "createdAt": now,
-        "updatedAt": now
-    })
-    db.agents.update_one(
-        {"_id": ObjectId(AGENT_ID)},
-        {"$addToSet": {"file_ids": file_id}}
-    )
-    client.close()
+    return response.status_code, response.text[:200]
 
 def main():
     print(f"[{datetime.now()}] RAG 자동저장 시작")
@@ -110,14 +80,9 @@ def main():
         if not lines:
             continue
         created_at = datetime.now().strftime("%Y-%m-%d %H:%M")
-        status, file_id = save_to_rag(conv_id, lines, created_at)
-        print(f"대화 {conv_id[:8]}... → RAG 저장 상태: {status} / file_id: {file_id}")
-        if status == 200:
-            content = f"대화ID: {conv_id}\n날짜: {created_at}\n\n" + "\n".join(lines)
-            filename = f"conv_{conv_id[:8]}.txt"
-            register_file_to_agent(file_id, filename, content)
-            print(f"에이전트 등록 완료: {file_id}")
-        time.sleep(0.5)
+        status, response_text = upload_to_librechat(conv_id, lines, created_at)
+        print(f"대화 {conv_id[:8]}... → 업로드: {status} / {response_text[:100]}")
+        time.sleep(1)
     save_last_saved_time(now_ts)
     print(f"[{datetime.now()}] 완료")
 
