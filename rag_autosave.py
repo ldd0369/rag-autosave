@@ -107,7 +107,7 @@ def main():
     for fid in ids_list[:5]:
         r = requests.post(
             f"{RAG_API_URL}/query",
-            json={"query": "생일", "file_id": fid, "k": 3},
+            json={"query": "RAG", "file_id": fid, "k": 3},
             headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
             timeout=30
         )
