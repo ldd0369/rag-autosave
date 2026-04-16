@@ -133,6 +133,12 @@ def main():
         )
         print(f"마지막 file_id 쿼리: {test_r.status_code} → {test_r.text[:200]}")
     client_mongo2.close()
+    # 수동 업로드 파일 필드 구조 확인
+    client_mongo2 = MongoClient(MONGO_URI)
+    db_mongo2 = client_mongo2.get_database("test")
+    sample = db_mongo2.files.find_one({"filename": {"$regex": "^9eabfa"}})
+    print(f"수동업로드 파일 필드: {sample}")
+    client_mongo2.close()
     
 if __name__ == "__main__":
     main()
