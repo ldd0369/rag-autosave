@@ -92,26 +92,12 @@ def main():
         time.sleep(0.5)
     save_last_saved_time(now_ts)
     print(f"[{datetime.now()}] 완료")
-    # 전체 ID 순회 쿼리 테스트
-    JWT_SECRET = os.environ.get("JWT_SECRET")
-    token = jwt.encode({"id": "rag-autosave"}, JWT_SECRET, algorithm="HS256")
-    ids_resp = requests.get(
-        f"{RAG_API_URL}/ids",
-        params={"entity_id": "69c9121e937a13bdcaf4e292"},
-        headers={"Authorization": f"Bearer {token}"},
-        timeout=30
-    )
-    import json as json_lib
-    ids_list = json_lib.loads(ids_resp.text)
-    print(f"전체 ID 수: {len(ids_list)}")
-    for fid in ids_list[:5]:
-        r = requests.post(
-            f"{RAG_API_URL}/query",
-            json={"query": "RAG", "file_id": fid, "k": 3},
-            headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
-            timeout=30
-        )
-        print(f"{fid[:20]} → {r.status_code} → {r.text[:100]}")
+    # LibreChat 내부 file_id 형식 확인
+    client_mongo = MongoClient(MONGO_URI)
+    db_mongo = client_mongo.get_database("test")
+    files = list(db_mongo.files.find({}, {"_id": 0, "file_id": 1, "filename": 1, "filepath": 1}))
+    print(f"파일 목록: {files}")
+    client_mongo.close()
     
 if __name__ == "__main__":
     main()
