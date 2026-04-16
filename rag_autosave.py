@@ -1,4 +1,4 @@
-# v7 - 진단용
+# v8
 import os
 import time
 import jwt
@@ -9,6 +9,7 @@ from bson import ObjectId
 
 MONGO_URI = os.environ.get("MONGO_URI")
 JWT_SECRET = os.environ.get("JWT_SECRET", "librechat2026")
+LIBRECHAT_TOKEN = os.environ.get("LIBRECHAT_TOKEN", "")
 FORCE_RESET = os.environ.get("FORCE_RESET", "false").lower() == "true"
 
 LIBRECHAT_URL = "https://librechat-production-8435.up.railway.app"
@@ -16,15 +17,28 @@ USER_ID = "69c9121e937a13bdcaf4e292"
 AGENT_ID = "69ca1ffda677f261425029b4"
 
 def generate_token():
+    """LibreChat 소스코드 기준 정확한 JWT 형식"""
     payload = {
         "id": USER_ID,
+        "username": "admin",
+        "provider": "local",
+        "email": "",
+        "name": "",
+        "avatar": None,
+        "role": "ADMIN",
+        "iat": int(time.time()),
         "exp": int(time.time()) + 86400
     }
     return jwt.encode(payload, JWT_SECRET, algorithm="HS256")
 
+def get_auth_headers():
+    """토큰 순서: LIBRECHAT_TOKEN 있으면 우선, 없으면 JWT 생성"""
+    if LIBRECHAT_TOKEN:
+        return {"Authorization": f"Bearer {LIBRECHAT_TOKEN}"}
+    return {"Authorization": f"Bearer {generate_token()}"}
+
 def register_to_agent(filename, content):
-    token = generate_token()
-    headers = {"Authorization": f"Bearer {token}"}
+    headers = get_auth_headers()
     time.sleep(3)
     files = {"file": (filename, content.encode("utf-8"), "text/plain")}
     data = {
@@ -72,30 +86,12 @@ def main():
     print(f"[{now_aware}] RAG 자동저장 시작")
     print(f"마지막 저장 시각: {since}")
 
-    # 진단: conversations 전체 수
-    total_convs = db.conversations.count_documents({})
-    print(f"[진단] conversations 전체 수: {total_convs}")
-
-    # 진단: conversations 샘플 전체 필드 출력
-    sample_conv = db.conversations.find_one({})
-    if sample_conv:
-        print(f"[진단] conversations 샘플 키 목록: {list(sample_conv.keys())}")
-        for k, v in sample_conv.items():
-            if k != "_id":
-                print(f"[진단] {k}: {type(v).__name__} = {repr(v)[:80]}")
-
-    # 진단: user 필드로 직접 count
-    count_str = db.conversations.count_documents({"user": USER_ID})
-    count_oid = db.conversations.count_documents({"user": ObjectId(USER_ID)})
-    print(f"[진단] user(string) 매칭: {count_str}개")
-    print(f"[진단] user(ObjectId) 매칭: {count_oid}개")
-
-    # 전체 대화 ID로 진행 (user 필터 없이)
+    # 전체 conversations에서 대화 ID 수집
     all_conversations = list(db.conversations.find({}, {"conversationId": 1}))
     conv_id_list = [c.get("conversationId") for c in all_conversations if c.get("conversationId")]
-    print(f"[진단] 전체 대화 ID 수: {len(conv_id_list)}")
+    print(f"전체 대화 수: {len(conv_id_list)}")
 
-    # since 이후 메시지
+    # since 이후 메시지가 있는 대화만 처리
     recent_messages = list(db.messages.find({
         "conversationId": {"$in": conv_id_list},
         "createdAt": {"$gt": since}
@@ -105,6 +101,9 @@ def main():
 
     conv_ids = list(set([m["conversationId"] for m in recent_messages if "conversationId" in m]))
     print(f"대화 {len(conv_ids)}개 처리 중")
+
+    success = 0
+    fail = 0
 
     for conv_id in conv_ids:
         messages = list(db.messages.find(
@@ -124,18 +123,25 @@ def main():
             agent_response = register_to_agent(filename, content)
             if agent_response.status_code == 200:
                 print(f"대화 {conv_id[:8]}... → 에이전트 등록 완료")
+                success += 1
             else:
-                print(f"대화 {conv_id[:8]}... → 등록 실패: {agent_response.status_code} / {agent_response.text[:200]}")
+                print(f"대화 {conv_id[:8]}... → 등록 실패: {agent_response.status_code}")
+                fail += 1
+                # 401이면 토큰 문제 — 첫 실패에서 바로 중단
+                if agent_response.status_code == 401:
+                    print(f"[중단] 401 Unauthorized — 토큰 문제. 응답: {agent_response.text[:300]}")
+                    break
         except Exception as e:
             print(f"대화 {conv_id[:8]}... → 에러: {e}")
+            fail += 1
+
+    print(f"[완료] 성공: {success} / 실패: {fail}")
 
     db.rag_autosave_state.update_one(
         {"_id": "last_run"},
         {"$set": {"last_run": datetime.utcnow()}},
         upsert=True
     )
-
-    print(f"[완료] 저장 정상 종료")
     client.close()
 
 if __name__ == "__main__":
