@@ -1,10 +1,11 @@
-# v5
+# v6
 import os
 import time
 import jwt
 import requests
 from datetime import datetime, timezone, timedelta
 from pymongo import MongoClient
+from bson import ObjectId
 
 MONGO_URI = os.environ.get("MONGO_URI")
 JWT_SECRET = os.environ.get("JWT_SECRET", "librechat2026")
@@ -71,26 +72,31 @@ def main():
     print(f"[{now_aware}] RAG 자동저장 시작")
     print(f"마지막 저장 시각: {since}")
 
-    # 진단: 전체 메시지 수
-    total_count = db.messages.count_documents({})
-    print(f"[진단] 전체 메시지 수: {total_count}")
+    # user 조건 없이 conversations 컬렉션에서 해당 유저 대화 ID 먼저 수집
+    user_conversations = list(db.conversations.find(
+        {"$or": [
+            {"user": USER_ID},
+            {"user": ObjectId(USER_ID)}
+        ]},
+        {"conversationId": 1}
+    ))
+    
+    print(f"[진단] 유저 대화 수: {len(user_conversations)}")
+    
+    # 대화 ID 목록
+    conv_id_list = [c["conversationId"] for c in user_conversations if "conversationId" in c]
+    
+    if not conv_id_list:
+        # conversations 컬렉션 샘플 확인
+        sample = db.conversations.find_one({})
+        if sample:
+            print(f"[진단] conversations 샘플 user 타입: {type(sample.get('user'))} / {repr(sample.get('user'))}")
+        client.close()
+        return
 
-    # 진단: user 필드로만 검색
-    user_count = db.messages.count_documents({"user": USER_ID})
-    print(f"[진단] user={USER_ID} 메시지 수: {user_count}")
-
-    # 진단: since 이후 메시지 (user 조건 없이)
-    since_count = db.messages.count_documents({"createdAt": {"$gt": since}})
-    print(f"[진단] since 이후 전체 메시지 수: {since_count}")
-
-    # 진단: 샘플 5개 user 값 확인
-    samples = list(db.messages.find({}, {"user": 1, "createdAt": 1}).limit(5))
-    for s in samples:
-        print(f"[진단] user={repr(s.get('user'))} / createdAt={s.get('createdAt')}")
-
-    # 본 쿼리
+    # 해당 대화들의 최근 메시지 수집
     recent_messages = list(db.messages.find({
-        "user": USER_ID,
+        "conversationId": {"$in": conv_id_list},
         "createdAt": {"$gt": since}
     }))
 
@@ -101,7 +107,7 @@ def main():
 
     for conv_id in conv_ids:
         messages = list(db.messages.find(
-            {"user": USER_ID, "conversationId": conv_id},
+            {"conversationId": conv_id},
             sort=[("createdAt", 1)]
         ))
         if not messages:
