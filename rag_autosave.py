@@ -83,6 +83,8 @@ def register_file_to_agent(file_id, filename, content):
         "user": USER_ID,
         "createdAt": now,
         "updatedAt": now
+        "source": "vectordb",
+        "embedded": True,
     })
     db.agents.update_one(
         {"_id": ObjectId(AGENT_ID)},
