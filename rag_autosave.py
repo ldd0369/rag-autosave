@@ -116,29 +116,8 @@ def main():
             print(f"에이전트 등록 완료: {file_id}")
         time.sleep(0.5)
     save_last_saved_time(now_ts)
-    print(f"[{datetime.now()}] 완료")
+    print(f"[완료] 저장 정상 종료")
     # 에이전트 file_id로 직접 쿼리 테스트
-    client_mongo2 = MongoClient(MONGO_URI)
-    db_mongo2 = client_mongo2.get_database("test")
-    agent = db_mongo2.agents.find_one({"_id": ObjectId(AGENT_ID)})
-    file_ids = agent.get("file_ids", [])
-    print(f"에이전트 등록 file_id 수: {len(file_ids)}")
-    if file_ids:
-        token2 = jwt.encode({"id": "rag-autosave"}, JWT_SECRET, algorithm="HS256")
-        test_r = requests.post(
-            f"{RAG_API_URL}/query",
-            json={"query": "생일", "file_id": file_ids[-1], "k": 3},
-            headers={"Authorization": f"Bearer {token2}", "Content-Type": "application/json"},
-            timeout=30
-        )
-        print(f"마지막 file_id 쿼리: {test_r.status_code} → {test_r.text[:200]}")
-    client_mongo2.close()
-    # 수동 업로드 파일 필드 구조 확인
-    client_mongo2 = MongoClient(MONGO_URI)
-    db_mongo2 = client_mongo2.get_database("test")
-    sample = db_mongo2.files.find_one({"filename": {"$regex": "^9eabfa"}})
-    print(f"수동업로드 파일 필드: {sample}")
-    client_mongo2.close()
     
 if __name__ == "__main__":
     main()
