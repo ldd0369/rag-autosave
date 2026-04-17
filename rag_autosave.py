@@ -1,18 +1,42 @@
 import os
 import uuid
 import time
+import requests
 from datetime import datetime, timezone
 from pymongo import MongoClient
 
 MONGO_URI = os.environ.get("MONGO_URI")
 FORCE_RESET = os.environ.get("FORCE_RESET", "false").lower() == "true"
 RAG_API_URL = os.environ.get("RAG_API_URL", "http://rag-api.railway.internal:8000")
+JWT_SECRET = os.environ.get("JWT_SECRET", "librechat2026")
 
 USER_ID = "69c9121e937a13bdcaf4e292"
 AGENT_ID = "69ca1ffda677f261425029b4"
 
+def get_jwt_token():
+    import jwt
+    payload = {
+        "id": USER_ID,
+        "exp": int(datetime.now(timezone.utc).timestamp()) + 86400
+    }
+    return jwt.encode(payload, JWT_SECRET, algorithm="HS256")
+
+def get_rag_headers():
+    token = get_jwt_token()
+    return {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {token}"
+    }
+
+def check_rag_api():
+    try:
+        r = requests.get(f"{RAG_API_URL}/docs", timeout=5)
+        print(f"RAG API /docs: {r.status_code} / {r.text[:300]}")
+    except Exception as e:
+        print(f"RAG API 접근 실패: {e}")
+
 def save_to_rag(file_id, filename, content):
-    import requests
+    headers = get_rag_headers()
     payload = {
         "documents": [{
             "page_content": content,
@@ -23,7 +47,6 @@ def save_to_rag(file_id, filename, content):
             }
         }]
     }
-    headers = {"Content-Type": "application/json"}
     try:
         response = requests.post(
             f"{RAG_API_URL}/documents",
@@ -71,6 +94,9 @@ def main():
     db = client.get_database("test")
 
     now = datetime.now(timezone.utc)
+
+    # RAG API 상태 확인
+    check_rag_api()
 
     if FORCE_RESET:
         since = datetime(2020, 1, 1)
@@ -151,7 +177,7 @@ def main():
             {"$addToSet": {"tool_resources.file_search.file_ids": file_id}}
         )
 
-        print(f"대화 {conv_id[:8]}... → MongoDB 등록 완료")
+        print(f"대화 {conv_id[:8]}... → 완료")
         success += 1
         time.sleep(1)
 
