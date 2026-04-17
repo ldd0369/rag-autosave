@@ -36,28 +36,24 @@ def check_rag_api():
         print(f"RAG API 접근 실패: {e}")
 
 def save_to_rag(file_id, filename, content):
-    headers = get_rag_headers()
-    payload = {
-        "documents": [{
-            "page_content": content,
-            "metadata": {
-                "file_id": file_id,
-                "filename": filename,
-                "user": USER_ID
-            }
-        }]
+    token = get_jwt_token()
+    headers = {"Authorization": f"Bearer {token}"}
+    files_payload = {
+        "files": (filename, content.encode("utf-8"), "text/plain")
     }
+    data = {"user_id": USER_ID}
     try:
         response = requests.post(
-            f"{RAG_API_URL}/documents",
-            json=payload,
+            f"{RAG_API_URL}/embed",
             headers=headers,
+            files=files_payload,
+            data=data,
             timeout=30
         )
         return response.status_code, response.text[:200]
     except Exception as e:
         return 0, str(e)
-
+        
 def extract_text(content):
     if not content:
         return ""
