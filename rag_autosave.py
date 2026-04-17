@@ -21,39 +21,23 @@ def get_jwt_token():
     }
     return jwt.encode(payload, JWT_SECRET, algorithm="HS256")
 
-def get_rag_headers():
-    token = get_jwt_token()
-    return {
-        "Content-Type": "application/json",
-        "Authorization": f"Bearer {token}"
-    }
-
-def check_rag_api():
-    try:
-        r = requests.get(f"{RAG_API_URL}/docs", timeout=5)
-        print(f"RAG API /docs: {r.status_code} / {r.text[:300]}")
-    except Exception as e:
-        print(f"RAG API 접근 실패: {e}")
-
 def save_to_rag(file_id, filename, content):
     token = get_jwt_token()
     headers = {"Authorization": f"Bearer {token}"}
-    files_payload = {
-        "files": (filename, content.encode("utf-8"), "text/plain")
-    }
-    data = {"user_id": USER_ID}
+    files_payload = {"file": (filename, content.encode("utf-8"), "text/plain")}
+    data = {"file_id": file_id, "user": USER_ID}
     try:
         response = requests.post(
             f"{RAG_API_URL}/embed",
             headers=headers,
             files=files_payload,
             data=data,
-            timeout=30
+            timeout=60
         )
-        return response.status_code, response.text[:200]
+        return response.status_code, response.text[:300]
     except Exception as e:
         return 0, str(e)
-        
+
 def extract_text(content):
     if not content:
         return ""
@@ -90,9 +74,6 @@ def main():
     db = client.get_database("test")
 
     now = datetime.now(timezone.utc)
-
-    # RAG API 상태 확인
-    check_rag_api()
 
     if FORCE_RESET:
         since = datetime(2020, 1, 1)
@@ -141,38 +122,18 @@ def main():
         file_id = str(uuid.uuid4())
         filename = f"conv_{conv_id[:8]}.txt"
 
-        # 1. RAG API에 직접 저장
         status, response_text = save_to_rag(file_id, filename, content)
-        print(f"대화 {conv_id[:8]}... → RAG 저장: {status} / {response_text}")
+        print(f"대화 {conv_id[:8]}... → RAG: {status} / {response_text}")
 
         if status != 200:
             fail += 1
             continue
 
-        # 2. MongoDB files 컬렉션에 파일 레코드 추가
-        db.files.update_one(
-            {"file_id": file_id},
-            {"$set": {
-                "file_id": file_id,
-                "user": USER_ID,
-                "filename": filename,
-                "filepath": f"openai/vectordb/{file_id}",
-                "source": "vectordb",
-                "type": "text/plain",
-                "size": len(content.encode("utf-8")),
-                "embedded": True,
-                "createdAt": datetime.utcnow(),
-                "updatedAt": datetime.utcnow()
-            }},
-            upsert=True
-        )
-
-        # 3. agents 컬렉션에 file_id 직접 추가
+        # MongoDB agents에 file_id 직접 추가
         db.agents.update_one(
             {"id": AGENT_ID},
             {"$addToSet": {"tool_resources.file_search.file_ids": file_id}}
         )
-
         print(f"대화 {conv_id[:8]}... → 완료")
         success += 1
         time.sleep(1)
