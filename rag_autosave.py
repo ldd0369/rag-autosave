@@ -21,9 +21,29 @@ def get_jwt_token():
     }
     return jwt.encode(payload, JWT_SECRET, algorithm="HS256")
 
-def save_to_rag(file_id, filename, content):
+def get_headers():
     token = get_jwt_token()
-    headers = {"Authorization": f"Bearer {token}"}
+    return {"Authorization": f"Bearer {token}"}
+
+def test_query():
+    print("=== RAG 검색 테스트 ===")
+    headers = get_headers()
+    payload = {"query": "생일", "k": 3}
+    try:
+        response = requests.post(
+            f"{RAG_API_URL}/query",
+            json=payload,
+            headers=headers,
+            timeout=30
+        )
+        print(f"쿼리 상태: {response.status_code}")
+        print(f"쿼리 결과: {response.text[:500]}")
+    except Exception as e:
+        print(f"쿼리 에러: {e}")
+    print("=== 테스트 완료 ===")
+
+def save_to_rag(file_id, filename, content):
+    headers = get_headers()
     files_payload = {"file": (filename, content.encode("utf-8"), "text/plain")}
     data = {"file_id": file_id, "user": USER_ID}
     try:
@@ -74,6 +94,9 @@ def main():
     db = client.get_database("test")
 
     now = datetime.now(timezone.utc)
+
+    # RAG 검색 테스트
+    test_query()
 
     if FORCE_RESET:
         since = datetime(2020, 1, 1)
@@ -129,7 +152,6 @@ def main():
             fail += 1
             continue
 
-        # MongoDB agents에 file_id 직접 추가
         db.agents.update_one(
             {"id": AGENT_ID},
             {"$addToSet": {"tool_resources.file_search.file_ids": file_id}}
