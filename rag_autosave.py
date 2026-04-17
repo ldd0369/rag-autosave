@@ -122,7 +122,7 @@ def main():
         try:
             agent_response = register_to_agent(filename, content)
             if agent_response.status_code == 200:
-                print(f"대화 {conv_id[:8]}... → 에이전트 등록 완료")
+                print(f"대화 {conv_id[:8]}... → 에이전트 등록 완료: {agent_response.text[:300]}")
                 success += 1
             else:
                 print(f"대화 {conv_id[:8]}... → 실패: {agent_response.status_code} / {agent_response.text[:200]}")
