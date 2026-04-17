@@ -25,23 +25,6 @@ def get_headers():
     token = get_jwt_token()
     return {"Authorization": f"Bearer {token}"}
 
-def test_query():
-    print("=== RAG 검색 테스트 ===")
-    headers = get_headers()
-    payload = {"query": "생일", "k": 3}
-    try:
-        response = requests.post(
-            f"{RAG_API_URL}/query",
-            json=payload,
-            headers=headers,
-            timeout=30
-        )
-        print(f"쿼리 상태: {response.status_code}")
-        print(f"쿼리 결과: {response.text[:500]}")
-    except Exception as e:
-        print(f"쿼리 에러: {e}")
-    print("=== 테스트 완료 ===")
-
 def save_to_rag(file_id, filename, content):
     headers = get_headers()
     files_payload = {"file": (filename, content.encode("utf-8"), "text/plain")}
@@ -57,6 +40,31 @@ def save_to_rag(file_id, filename, content):
         return response.status_code, response.text[:300]
     except Exception as e:
         return 0, str(e)
+
+def test_query(file_ids):
+    print("=== RAG 검색 테스트 ===")
+    if not file_ids:
+        print("저장된 file_id 없음. 테스트 스킵.")
+        return
+    headers = get_headers()
+    headers["Content-Type"] = "application/json"
+    payload = {
+        "query": "생일",
+        "file_ids": file_ids[:5],
+        "k": 3
+    }
+    try:
+        response = requests.post(
+            f"{RAG_API_URL}/query",
+            json=payload,
+            headers=headers,
+            timeout=30
+        )
+        print(f"쿼리 상태: {response.status_code}")
+        print(f"쿼리 결과: {response.text[:500]}")
+    except Exception as e:
+        print(f"쿼리 에러: {e}")
+    print("=== 테스트 완료 ===")
 
 def extract_text(content):
     if not content:
@@ -92,11 +100,7 @@ def get_conversation_text(messages):
 def main():
     client = MongoClient(MONGO_URI)
     db = client.get_database("test")
-
     now = datetime.now(timezone.utc)
-
-    # RAG 검색 테스트
-    test_query()
 
     if FORCE_RESET:
         since = datetime(2020, 1, 1)
@@ -128,6 +132,7 @@ def main():
     success = 0
     fail = 0
     skip = 0
+    saved_file_ids = []
 
     for conv_id in conv_ids:
         messages = list(db.messages.find(
@@ -146,21 +151,33 @@ def main():
         filename = f"conv_{conv_id[:8]}.txt"
 
         status, response_text = save_to_rag(file_id, filename, content)
-        print(f"대화 {conv_id[:8]}... → RAG: {status} / {response_text}")
+        print(f"대화 {conv_id[:8]}... → RAG: {status}")
 
         if status != 200:
             fail += 1
             continue
 
-        db.agents.update_one(
-            {"id": AGENT_ID},
-            {"$addToSet": {"tool_resources.file_search.file_ids": file_id}}
+        # file_id MongoDB에 저장
+        db.rag_file_ids.update_one(
+            {"conv_id": conv_id},
+            {"$set": {
+                "conv_id": conv_id,
+                "file_id": file_id,
+                "filename": filename,
+                "createdAt": datetime.utcnow()
+            }},
+            upsert=True
         )
+        saved_file_ids.append(file_id)
         print(f"대화 {conv_id[:8]}... → 완료")
         success += 1
         time.sleep(1)
 
     print(f"[완료] 성공: {success} / 실패: {fail} / skip: {skip}")
+
+    # 저장된 전체 file_id 목록으로 쿼리 테스트
+    all_file_ids = [doc["file_id"] for doc in db.rag_file_ids.find({}, {"file_id": 1})]
+    test_query(all_file_ids)
 
     db.rag_autosave_state.update_one(
         {"_id": "last_run"},
