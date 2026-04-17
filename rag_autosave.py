@@ -22,41 +22,29 @@ def get_jwt_token():
     return jwt.encode(payload, JWT_SECRET, algorithm="HS256")
 
 def get_headers():
-    token = get_jwt_token()
-    return {"Authorization": f"Bearer {token}"}
+    return {"Authorization": f"Bearer {get_jwt_token()}"}
 
 def save_to_rag(file_id, filename, content):
     headers = get_headers()
-    files_payload = {"file": (filename, content.encode("utf-8"), "text/plain")}
-    data = {"file_id": file_id, "user": USER_ID}
     try:
         response = requests.post(
             f"{RAG_API_URL}/embed",
             headers=headers,
-            files=files_payload,
-            data=data,
+            files={"file": (filename, content.encode("utf-8"), "text/plain")},
+            data={"file_id": file_id, "user": USER_ID},
             timeout=60
         )
-        return response.status_code, response.text[:300]
+        return response.status_code, response.text[:200]
     except Exception as e:
         return 0, str(e)
 
-def test_query(file_ids):
+def test_query(file_id):
     print("=== RAG 검색 테스트 ===")
-    if not file_ids:
-        print("저장된 file_id 없음. 테스트 스킵.")
-        return
     headers = get_headers()
-    headers["Content-Type"] = "application/json"
-    payload = {
-        "query": "생일",
-        "file_ids": file_ids[:5],
-        "k": 3
-    }
     try:
         response = requests.post(
             f"{RAG_API_URL}/query",
-            json=payload,
+            json={"query": "생일", "file_id": file_id, "k": 3},
             headers=headers,
             timeout=30
         )
@@ -132,7 +120,7 @@ def main():
     success = 0
     fail = 0
     skip = 0
-    saved_file_ids = []
+    last_file_id = None
 
     for conv_id in conv_ids:
         messages = list(db.messages.find(
@@ -168,16 +156,25 @@ def main():
             }},
             upsert=True
         )
-        saved_file_ids.append(file_id)
+
+        last_file_id = file_id
         print(f"대화 {conv_id[:8]}... → 완료")
         success += 1
         time.sleep(1)
 
     print(f"[완료] 성공: {success} / 실패: {fail} / skip: {skip}")
 
-    # 저장된 전체 file_id 목록으로 쿼리 테스트
-    all_file_ids = [doc["file_id"] for doc in db.rag_file_ids.find({}, {"file_id": 1})]
-    test_query(all_file_ids)
+    # 마지막 저장된 file_id로 쿼리 테스트
+    if last_file_id:
+        test_query(last_file_id)
+    else:
+        # 기존 저장된 file_id 중 하나로 테스트
+        existing = db.rag_file_ids.find_one({})
+        if existing:
+            print(f"기존 file_id로 테스트: {existing['file_id']}")
+            test_query(existing["file_id"])
+        else:
+            print("테스트할 file_id 없음")
 
     db.rag_autosave_state.update_one(
         {"_id": "last_run"},
