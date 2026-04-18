@@ -161,7 +161,15 @@ def main():
         print(f"대화 {conv_id[:8]}... → 완료")
         success += 1
         time.sleep(1)
-
+        # MongoDB agents 컬렉션에 file_ids 직접 등록
+        all_file_ids = [doc["file_id"] for doc in db.rag_file_ids.find({}, {"file_id": 1})]
+        db.agents.update_one(
+            {"id": AGENT_ID},
+            {"$set": {
+                "tool_resources.file_search.file_ids": all_file_ids
+            }}
+        )
+        print(f"[에이전트 업데이트] {len(all_file_ids)}개 file_id를 agent에 등록 완료")
     print(f"[완료] 성공: {success} / 실패: {fail} / skip: {skip}")
 
     # 마지막 저장된 file_id로 쿼리 테스트
