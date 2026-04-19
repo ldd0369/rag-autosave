@@ -1,9 +1,10 @@
-# v10 - force rebuild 2026-04-19
+# v11 - register to files collection for LibreChat File Search
 import os
 import uuid
 import time
 import requests
 from datetime import datetime, timezone
+from bson import ObjectId
 from pymongo import MongoClient
 
 MONGO_URI = os.environ.get("MONGO_URI")
@@ -77,6 +78,26 @@ def extract_text(content):
                 return str(content[key])
     return str(content)
 
+def register_file(db, file_id, filename, byte_size):
+    """RAG에 임베딩된 파일을 LibreChat files 컬렉션에 등록 (미등록 시에만 삽입)."""
+    db.files.update_one(
+        {"file_id": file_id},
+        {"$setOnInsert": {
+            "user": ObjectId(USER_ID),
+            "file_id": file_id,
+            "filename": filename,
+            "filepath": "vectordb",
+            "bytes": byte_size,
+            "object": "file",
+            "type": "text/plain",
+            "embedded": True,
+            "source": "vectordb",
+            "createdAt": datetime.now(timezone.utc),
+            "updatedAt": datetime.now(timezone.utc),
+        }},
+        upsert=True,
+    )
+
 def get_conversation_text(messages):
     lines = []
     for msg in messages:
@@ -104,6 +125,16 @@ def main():
 
     print(f"[{now}] RAG 자동저장 시작")
     print(f"마지막 저장 시각: {since}")
+
+    # 기존 rag_file_ids 중 files 컬렉션 미등록 항목 일괄 동기화 (최초 1회)
+    existing_rag = list(db.rag_file_ids.find({}, {"file_id": 1, "filename": 1}))
+    registered = {f["file_id"] for f in db.files.find({}, {"file_id": 1})}
+    sync_count = 0
+    for rec in existing_rag:
+        if rec.get("file_id") and rec["file_id"] not in registered:
+            register_file(db, rec["file_id"], rec.get("filename", f"conv_{rec['file_id'][:8]}.txt"), 0)
+            sync_count += 1
+    print(f"[files 동기화] 신규 등록 {sync_count}개 / 기존 rag_file_ids {len(existing_rag)}개")
 
     all_conversations = list(db.conversations.find({}, {"conversationId": 1}))
     conv_id_list = [c.get("conversationId") for c in all_conversations if c.get("conversationId")]
@@ -157,6 +188,9 @@ def main():
             }},
             upsert=True
         )
+
+        # LibreChat files 컬렉션에 등록
+        register_file(db, file_id, filename, len(content.encode("utf-8")))
 
         last_file_id = file_id
         print(f"대화 {conv_id[:8]}... → 완료")
