@@ -1,4 +1,4 @@
-# v11 - register to files collection for LibreChat File Search
+# v12 - add entity_id to embed for LibreChat File Search tool compatibility
 import os
 import uuid
 import time
@@ -13,7 +13,7 @@ RAG_API_URL = os.environ.get("RAG_API_URL", "http://rag-api.railway.internal:800
 JWT_SECRET = os.environ.get("JWT_SECRET", "librechat2026")
 
 USER_ID = "69c9121e937a13bdcaf4e292"
-AGENT_ID = "agent_cTUj86IrAnZ44EdmDB1iB"
+AGENT_ID = "agent_cTUjB6IrAnZ44EdmDB1i8"
 
 def get_jwt_token():
     import jwt
@@ -33,7 +33,7 @@ def save_to_rag(file_id, filename, content):
             f"{RAG_API_URL}/embed",
             headers=headers,
             files={"file": (filename, content.encode("utf-8"), "text/plain")},
-            data={"file_id": file_id, "user": USER_ID},
+            data={"file_id": file_id, "user": USER_ID, "entity_id": AGENT_ID},
             timeout=60
         )
         return response.status_code, response.text[:200]
