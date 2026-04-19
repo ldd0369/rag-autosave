@@ -170,7 +170,10 @@ def main():
             }}
         )
         print(f"[에이전트 업데이트] {len(all_file_ids)}개 file_id를 agent에 등록 완료")
-    print(f"[완료] 성공: {success} / 실패: {fail} / skip: {skip}")
+        # 디버깅: 업데이트 결과 확인
+        updated_agent = db.agents.find_one({"id": AGENT_ID}, {"tool_resources": 1})
+        print(f"[진단] agent tool_resources: {updated_agent}")
+        print(f"[완료] 성공: {success} / 실패: {fail} / skip: {skip}")
 
     # 마지막 저장된 file_id로 쿼리 테스트
     if last_file_id:
