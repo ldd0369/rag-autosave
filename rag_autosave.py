@@ -162,20 +162,21 @@ def main():
         print(f"대화 {conv_id[:8]}... → 완료")
         success += 1
         time.sleep(1)
-        # MongoDB agents 이름으로 찾기
-        target_agent = db.agents.find_one({"name": "이주희 마스터 에이전트"})
-        if target_agent:
-            all_file_ids = [doc["file_id"] for doc in db.rag_file_ids.find({}, {"file_id": 1})]
-            result = db.agents.update_one(
-                {"_id": target_agent["_id"]},
-                {"$set": {
-                   "tool_resources.file_search.file_ids": all_file_ids
+
+    # MongoDB agents 이름으로 찾기 (루프 밖 1회 실행)
+    target_agent = db.agents.find_one({"name": "이주희 마스터 에이전트"})
+    if target_agent:
+        all_file_ids = [doc["file_id"] for doc in db.rag_file_ids.find({}, {"file_id": 1})]
+        result = db.agents.update_one(
+            {"_id": target_agent["_id"]},
+            {"$set": {
+                "tool_resources.file_search.file_ids": all_file_ids
             }}
         )
         print(f"[에이전트 업데이트] id={target_agent.get('id')}, matched={result.matched_count}, modified={result.modified_count}, {len(all_file_ids)}개 file_id")
     else:
         print(f"[에이전트 업데이트] 에이전트를 찾지 못함")
-        print(f"[완료] 성공: {success} / 실패: {fail} / skip: {skip}")
+    print(f"[완료] 성공: {success} / 실패: {fail} / skip: {skip}")
 
     # 마지막 저장된 file_id로 쿼리 테스트
     if last_file_id:
