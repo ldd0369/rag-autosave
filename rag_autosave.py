@@ -165,11 +165,11 @@ def main():
         # MongoDB agents 이름으로 찾기
         target_agent = db.agents.find_one({"name": "이주희 마스터 에이전트"})
         if target_agent:
-        all_file_ids = [doc["file_id"] for doc in db.rag_file_ids.find({}, {"file_id": 1})]
-        result = db.agents.update_one(
-            {"_id": target_agent["_id"]},
-            {"$set": {
-                "tool_resources.file_search.file_ids": all_file_ids
+            all_file_ids = [doc["file_id"] for doc in db.rag_file_ids.find({}, {"file_id": 1})]
+            result = db.agents.update_one(
+                {"_id": target_agent["_id"]},
+                {"$set": {
+                   "tool_resources.file_search.file_ids": all_file_ids
             }}
         )
         print(f"[에이전트 업데이트] id={target_agent.get('id')}, matched={result.matched_count}, modified={result.modified_count}, {len(all_file_ids)}개 file_id")
